@@ -1,6 +1,9 @@
 .DS_Store
-.py[cod]
-.sqlite3
+*.png
+*.jpg
+*.gif
+*.py[cod]
+*.sqlite3
 bin/
 files/
 fonts/
