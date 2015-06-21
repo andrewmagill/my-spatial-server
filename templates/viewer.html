@@ -1,0 +1,77 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+
+
+
+
+
+
+
+
+
+
+
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=7" />
+<title>ArcGIS JavaScript API: GreyScale</title>
+<style type="text/css">
+@import "http://js.arcgis.com/3.11/dijit/themes/tundra/tundra.css";
+@import "http://js.arcgis.com/3.11/esri/css/esri.css";
+@import "http://server.arcgisonline.com/arcgis/rest/static/jsapi.css"
+</style>
+<script type="text/javascript">
+var djConfig = { parseOnLoad: true };
+</script>
+<script type="text/javascript" src="http://js.arcgis.com/3.11">
+</script>
+<script type="text/javascript">
+dojo.require("dijit.layout.BorderContainer");
+dojo.require("dijit.layout.ContentPane");
+dojo.require("esri.map");
+var map;
+function init() {
+    map = new esri.Map("map");
+
+      var layer = new esri.layers.ArcGISTiledMapServiceLayer("http://localhost:8000/GIS/REST/MapTiled/GreyScale/MapServer");
+
+    map.addLayer(layer);
+    var resizeTimer;
+    dojo.connect(map, 'onLoad', function(theMap) {
+      dojo.connect(dijit.byId('map'), 'resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+          map.resize();
+          map.reposition();
+         }, 500);
+       });
+     });
+    }
+dojo.addOnLoad(init);
+</script>
+                  <!--
+                  <script type="text/javascript">
+                    var AKSB=AKSB||{};AKSB.q=[];AKSB.mark=function(c,a){AKSB.q.push(["mark",c,a||(new Date).getTime()])};AKSB.measure=function(c,a,b){AKSB.q.push(["measure",c,a,b||(new Date).getTime()])};AKSB.done=function(c){AKSB.q.push(["done",c])};AKSB.mark("firstbyte",(new Date).getTime());
+                    AKSB.prof={custid:"46927",ustr:"",originlat:0,clientrtt:35,ghostip:"66.171.225.129",ipv6:false,pct:10,xhrtest:false,clientip:"99.73.228.144",requestid:"dad2c39",protocol:"",akM:"c",akN:"ae"};
+                    (function(c){var a=document.createElement("iframe");a.src="javascript:false";(a.frameElement||a).style.cssText="width: 0; height: 0; border: 0; display: none";var b=document.getElementsByTagName("script"),b=b[b.length-1];b.parentNode.insertBefore(a,b);a=a.contentWindow.document;b=String.fromCharCode;c=b(60)+"body onload=\"var js = document.createElement('script');js.id = 'aksb-ifr';js.src = '"+c+"';document.body.appendChild(js);\""+b(62);a.open().write(c);a.close()})(("https:"===document.location.protocol?
+                    "https:":"http:")+"//ds-aksb-a.akamaihd.net/aksb.min.js");
+                  </script>-->
+                  </head>
+<body class="tundra">
+	<div dojotype="dijit.layout.BorderContainer" design="headline" gutters="true" style="width: 100%; height: 100%; margin: 0;">
+		<div dojotype="dijit.layout.ContentPane" region="top" id="navtable">
+			<div style="float:left;" id="breadcrumbs">ArcGIS JavaScript API: GreyScale</div>
+			<div style="float:right;" id="help">
+			Built using the <a href="http://help.arcgis.com/en/webapi/javascript/arcgis/">ArcGIS JavaScript API</a>
+			</div>
+		</div>
+		<div id="map" dojotype="dijit.layout.ContentPane" region="center">
+		</div>
+	</div>
+</body>
+
+
+
+</html>

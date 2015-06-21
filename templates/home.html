@@ -1,0 +1,24 @@
+{% load staticfiles %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Django Placeholder Images</title>
+  <link rel="stylesheet" href="{% static 'site.css' %}" type="text/css">
+</head>
+<body>
+  <h1>Tile Server</h1>
+  <p>Works like ArcGIS Server for cached maps</p>
+  <b>/tile/lod/y/x</b></p>
+  <pre>&lt;img src="{{ example }}" &gt;</pre>
+  <h2>Examples</h2>
+  <ul>
+    <li><img src="{% url 'tile' lod=1 y=2375 x=1872%}"></li>
+    <li><img src="{% url 'tile' lod=1 y=2375 x=1873%}"></li>
+  </ul>
+  <ul>
+    <li><img src="{% url 'tile' lod=1 y=2376 x=1872%}"></li>
+    <li><img src="{% url 'tile' lod=1 y=2376 x=1873%}"></li>
+  </ul>
+</body>
+</heml>
