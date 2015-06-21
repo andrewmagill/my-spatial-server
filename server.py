@@ -65,11 +65,11 @@ class TileForm(forms.Form):
         height = 256
         width = 256
 
-        text_size_divisor = 8
+        text_size_divisor = 9
 
         image = Image.new('RGB', (width, height), "gray")
         draw = ImageDraw.Draw(image)
-        text = '{} / {} / {}'.format(lod, y, x)
+        text = '{}/{}/{}'.format(lod, y, x)
 
         image_size = math.sqrt(image.size[0] * image.size[1])
         fontsize = math.floor(image_size / text_size_divisor)
