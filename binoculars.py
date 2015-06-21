@@ -1,4 +1,4 @@
-import mmap
+import mmap, struct
 
 bundle_file_path = r"files/R0480C0380.bundle"
 
@@ -7,28 +7,19 @@ with open(bundle_file_path, "r+b") as f:
     mm = mmap.mmap(f.fileno(), 0)
 
     png_header_string = "\211PNG\r\n\032\n"
-    png_end_string = "IEND"
-
     begin_read = 0
-    end_read = 0
-
     count = 0
 
     # try not to fill up hd
     while count < 2000:
 
-        begin_png = mm.find(png_header_string, begin_read)
+        begin_read = mm.find(png_header_string, begin_read)
 
-        if begin_png < 0:
+        if begin_read < 0:
             break
 
-        begin_read = begin_png
-
-        end_png = mm.find(png_end_string, begin_read)
-        if end_png < 0:
-            break
-
-        end_read = end_png + len(png_end_string)
+        size = struct.unpack('i',mm[begin_read - 4:begin_read])[0]
+        end_read = begin_read + size
 
         count += 1
         output_file = open("tile_%i.png" % count, 'wb')
