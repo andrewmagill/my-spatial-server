@@ -228,6 +228,57 @@ def blablabla(file_path):
                 previous_stored_value = stored_value
                 stored_value = 0
 
+def chunk(file_path):
+    """Chunk returns a list of decimal values stored in a .bundlx (bundle
+    index) file that represent the locations of images stored in the
+    corresponding .bundle file.
+
+    The values are stored in 5 byte chunks using little endian representation
+    to store large numbers.  Each .bundlx file is exactly the same size; the
+    position of each chunk in the .bundlx indicates the row and column position
+    of the particular map tile image in the overall scheme.  These values
+    should be added to the top left origin row and column found in the bundle
+    file name.
+
+    Each chunk contains at least two bytes.  The first byte represents the row,
+    the second represents the column.  However, only 'blank' chunks represent
+    the row and column!  Non blank chunks use all 5 byts to represent the
+    postition of the image in the .bundle file.
+
+    It is up to the developer to determine what to do with the bogus values
+    found in the 'blank' chunks.
+    """
+    file = open(file_path, "r+b")
+
+    mm = mmap.mmap(file.fileno(), 0)
+
+    chunk_bytes = []
+
+    for i in range(len(mm)):
+
+        byte = mm[i]
+        base16 = byte.encode('hex')
+        base10 = int(base16, 16)
+
+        chunk_bytes.append(base10)
+
+        if i % 5 == 0:
+            if not i == 0:
+                # decimal value is store using
+                # little endian representation
+                stored_value  = chunk_bytes[0] * 1
+                stored_value += chunk_bytes[1] * 256
+                stored_value += chunk_bytes[2] * 65536
+                stored_value += chunk_bytes[3] * 16777216
+                stored_value += chunk_bytes[4] * 4294967296
+
+                chunk_bytes = []
+                # this doesn't really need to happen, but
+                # just for good measure, set value to zero
+                stored_value = 0
+                
+    return chunk_bytes
+
 def main():
     bundles = ["files/L00/R0480C0380.bundlx",
                "files/L01/R0900C0700.bundlx",
