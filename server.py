@@ -48,9 +48,9 @@ from django.views.decorators.http import etag
 
 class TileForm(forms.Form):
 
-    lod = forms.IntegerField(min_value=1, max_value=100)
-    y = forms.IntegerField(min_value=1, max_value=10000000)
-    x = forms.IntegerField(min_value=1, max_value=10000000)
+    lod = forms.IntegerField(min_value=0, max_value=100)
+    y = forms.IntegerField(min_value=0, max_value=10000000)
+    x = forms.IntegerField(min_value=0, max_value=10000000)
 
     def generate(self, image_format='PNG'):
         lod = self.cleaned_data['lod']

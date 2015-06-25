@@ -76,8 +76,12 @@ def compare_bundlx(file_path1, file_path2):
 
 
         if mm1[i] == mm2[i]:
-            print bcolors.LIGHTBLUE + "%s" % char1,
-            print bcolors.LIGHTBLUE + "%s" % char2 + bcolors.ENDC,
+            if char1 == '00':
+                print bcolors.CYAN + "%s" % char1 + bcolors.ENDC,
+                print bcolors.CYAN + "%s" % char2 + bcolors.ENDC,
+            else:
+                print bcolors.LIGHTBLUE + "%s" % char1,
+                print bcolors.LIGHTBLUE + "%s" % char2 + bcolors.ENDC,
         else:
             print bcolors.WHITE + "%s" % char1 + bcolors.ENDC,
             print bcolors.WHITE + "%s" % char2 + bcolors.ENDC,
@@ -184,11 +188,47 @@ def parse_bundlx(file_path):
 
         mm.close()
 
-def main():
-    bundle_file_path = r"files/R0480C0380.bundle"
-    #bundle_index_path1 = r"files/R0480C0380.bundlx"
-    #bundle_index_path2 = r"files/R251f80C1d4700.bundlx"
+def blablabla(file_path):
+    file = open(file_path, "r+b")
 
+    mm = mmap.mmap(file.fileno(), 0)
+
+    magic_nos = []
+    stored_value = 0
+    previous_stored_value = 0
+
+    for i in range(len(mm)):
+
+        offset = i
+
+        byte = mm[i]
+        base16 = byte.encode('hex')
+        base10 = int(base16, 16)
+
+        magic_nos.append(base10)
+
+        print bcolors.BLUE + "%03d" % base10 + bcolors.ENDC,
+
+        if offset % 5 == 0:
+            if not offset == 0:
+                try:
+                    stored_value = magic_nos[0] * 1
+                    stored_value += magic_nos[1] * 256
+                    stored_value += magic_nos[2] * 65536
+                    stored_value += magic_nos[3] * 16777216
+                    stored_value += magic_nos[4] * 4294967296
+                    if not stored_value == (previous_stored_value + 4):
+                        print bcolors.LIGHTRED + " %i" % stored_value + bcolors.ENDC
+                    else:
+                        print bcolors.DARKGRAY + " %i" % stored_value + bcolors.ENDC
+                except Exception as e:
+                    print
+
+                magic_nos = []
+                previous_stored_value = stored_value
+                stored_value = 0
+
+def main():
     bundles = ["files/L00/R0480C0380.bundlx",
                "files/L01/R0900C0700.bundlx",
                "files/L02/R1280C0e80.bundlx",
@@ -198,11 +238,45 @@ def main():
               ["files/L05/R9400C7480.bundlx",
                "files/L05/R9400C7500.bundlx",
                "files/L05/R9480C7480.bundlx",
-               "files/L05/R9480C7500.bundlx"]]
+               "files/L05/R9480C7500.bundlx"],
+               "files/R251f80C1d4700.bundlx"]
+
+    # Level 0
+    #   R         C
+    #   0480      0380
+    # Level 1
+    #   R         C
+    #   0900      0700
+    # Level 2
+    #   R         C
+    #   1280      0e80
+    # Level 3
+    #   R         C
+    #   2500      1d00
+    # Level 4
+    #   R         C
+    #   4a00      3a00
+    #   4a00      3a80
+    # Level 5
+    #   R         C
+    #   9400      7480
+    #   9400      7500
+    #   9480      7480
+    #   9480      7500
+    #   .
+    #   .
+    #   .
+    # Level 11
+    #   R         C
+    #   . . .
+    #   251f80    1d4700
+    #   . . .
+
 
     #explode_bundle(bundle_file_path)
     #parse_bundlx(bundle_index_path)
-    compare_bundlx(bundles[0], bundles[1])
+    #compare_bundlx(bundles[0], bundles[-1])
+    blablabla(bundles[0])
 
 if __name__== "__main__":
     main()
