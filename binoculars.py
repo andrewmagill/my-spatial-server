@@ -31,7 +31,7 @@ class Cache(object):
         self.bundles   = []
         self._find_bundles()
 
-    def get_bundle_for(self, level, row, column):
+    def get_bundle(self, level, row, column):
         """Returns the bundle, if one exists, that would contain a tile,
         if one exists, for the given level, row, and column.
         """
@@ -42,11 +42,16 @@ class Cache(object):
 
         bundles = self.bundles[self.levels[level]]
 
-        row = int(row) + MAX_ROWS
-        column = int(column) + MAX_COLUMNS
 
         for bundle in bundles:
-            print bundle
+            bundle_row, bundle_col = self._extract_row_col(bundle)
+            if bundle_row > row:
+                continue
+            if bundle_col > column:
+                continue
+            if bundle_row > row - Cache.MAX_ROWS:
+                if bundle_col > column - Cache.MAX_COLUMNS:
+                    return bundle
 
 
     def _extract_level(self, path):
@@ -77,11 +82,14 @@ class Cache(object):
 
     def _extract_row_col(self, file_name):
         """Returns row and column integer for given bundle name."""
-        row_match = re.search('R[a-zA-Z0-9]+', file_name)
+
+        # Regex Match all characters between two strings
+        # http://stackoverflow.com/a/6110113/1344499
+        row_match = re.search('(?<=R)(.*)(?=C)', file_name)
         if not row_match:
             raise Exception('Not a bundle file')
 
-        col_match = re.search('C[a-zA-Z0-9]+', file_name)
+        col_match = re.search('[^C]+$', file_name)
         if not col_match:
             raise Exception('Not a bundle file')
 
@@ -134,18 +142,16 @@ class Cache(object):
 
                 index = self.levels[level]
 
-                ####
-                print "index: %i" % index
-                print "len(self.bundles): %i" % len(self.bundles)
-                ####
-
-                bundle_tuple = (file_name, self._extract_row_col(file_name))
-
+                #bundle_tuple = (file_name, self._extract_row_col(file_name))
+                #
+                #if index >= len(self.bundles):
+                #    self.bundles.append([bundle_tuple])
+                #else:
+                #    self.bundles[index].append(bundle_tuple)
                 if index >= len(self.bundles):
-                    self.bundles.append([bundle_tuple])
+                    self.bundles.append([file_name])
                 else:
-                    self.bundles[index].append(bundle_tuple)
-
+                    self.bundles[index].append(file_name)
 
 class Tile(object):
     """Represents a map tile image with associated attributes:
