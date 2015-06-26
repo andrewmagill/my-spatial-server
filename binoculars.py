@@ -1,4 +1,4 @@
-import mmap, struct
+import os, mmap, re, struct
 
 class bcolors:
     ENDC = '\033[0m'
@@ -13,6 +13,172 @@ class bcolors:
     PURPLE = '\033[95m'
     ONWHITE = '\033[48m'
     WHITE = '\033[37m'
+
+class Cache(object):
+    """Represents a map tile cache"""
+
+    MAX_ROWS    = 128
+    MAX_COLUMNS = 128
+
+    MIN_DIGITS_LEVEL = 1
+    MAX_DIGITS_LEVEL = 3
+
+    BUNDLX = ".bundlx"
+
+    def __init__(self, root_path):
+        self.root_path = root_path
+        self.levels    = {}
+        self.bundles   = []
+        self._find_bundles()
+
+    def get_bundle_for(self, level, row, column):
+        """Returns the bundle, if one exists, that would contain a tile,
+        if one exists, for the given level, row, and column.
+        """
+        # this breaks the whole max_digits_level flexibility thing
+        level = "L%02d" % level
+        if not self.levels.has_key(level):
+            raise Exception('Level %s does not exist in cache' % level)
+
+        bundles = self.bundles[self.levels[level]]
+
+        row = int(row) + MAX_ROWS
+        column = int(column) + MAX_COLUMNS
+
+        for bundle in bundles:
+            print bundle
+
+
+    def _extract_level(self, path):
+        """Returns substring like 'L00', or 'L01', if it exists"""
+        m = Cache.MIN_DIGITS_LEVEL
+        n = Cache.MAX_DIGITS_LEVEL
+        match = re.search('L[0-9]{%i,%i}' % (m,n), path)
+        if match:
+            return match.group(0)
+
+    def _is_cache_path(self, path):
+        """Check root_path for 'Layers', '_alllayers',
+        or some folder like 'L00'.  Returns boolean.
+        """
+        contents = os.listdir(path)
+        if contents.count("Layers"):
+            return True
+        elif contents.count("layers"):
+            return True
+        elif contents.count("_alllayers"):
+            return True
+
+        for item in contents:
+            if self._extract_level(item):
+                return True
+
+        return False
+
+    def _extract_row_col(self, file_name):
+        """Returns row and column integer for given bundle name."""
+        row_match = re.search('R[a-zA-Z0-9]+', file_name)
+        if not row_match:
+            raise Exception('Not a bundle file')
+
+        col_match = re.search('C[a-zA-Z0-9]+', file_name)
+        if not col_match:
+            raise Exception('Not a bundle file')
+
+        row_hex = row_match.group(0)
+        col_hex = col_match.group(0)
+
+        row_int = int(row_hex, 16)
+        col_int = int(col_hex, 16)
+        return row_int, col_int
+
+    def _find_bundles(self):
+        """Searches root_path for bundlx files, populates
+        levels hash with level name and index corresponding
+        to second-dimensional list in bundles.
+
+        ex:
+            self.levels might contain
+                {'L00': 0,'L00': 1,'L00': 2,'L00': 3}
+            self.bundles would be like this
+                [[R01C01],
+                 [R02C02],
+                 [R04C04,R04C04],
+                 [R05C04,R06C04,R05C05,R06C05]]
+
+            (of course the bundle names would differ)
+
+        Could probably be done way better.
+        """
+        if not os.path.isdir(self.root_path):
+            raise Exception("Directory does not exist")
+
+        if not self._is_cache_path(self.root_path):
+            raise Exception("Directory does not appear \
+                             to contain a map cache")
+
+        for root, dirs, files in os.walk(self.root_path):
+
+            for file in files:
+
+                file_path = os.path.join(root, file)
+                file_name, file_ext = os.path.splitext(file_path)
+
+                if not file_ext == Cache.BUNDLX:
+                    continue
+
+                level = self._extract_level(file_path)
+
+                if not self.levels.has_key(level):
+                    self.levels[level] = len(self.bundles)
+
+                index = self.levels[level]
+
+                ####
+                print "index: %i" % index
+                print "len(self.bundles): %i" % len(self.bundles)
+                ####
+
+                bundle_tuple = (file_name, self._extract_row_col(file_name))
+
+                if index >= len(self.bundles):
+                    self.bundles.append([bundle_tuple])
+                else:
+                    self.bundles[index].append(bundle_tuple)
+
+
+class Tile(object):
+    """Represents a map tile image with associated attributes:
+
+    level   -   zoom level in which the image is displayed
+    row     -   row in which the image is displayed
+    column  -   column in which the image is displayed
+    bundle  -   name of bundle file that contains the image
+    path    -   unc path where bundle file is located
+    address -   byte address of the image data in the bundle file
+    """
+    def __init__(self, path=None, level=None, row=None,
+                 column=None, **kwargs):
+        """Initializes the Tile object"""
+        self.path    = path
+        self.level   = level
+        self.row     = row
+        self.column  = column
+        self.bundle  = None
+        self.address = None
+        self.image   = None
+
+    def image(self):
+        """Returns image if found, raises Exception if not found"""
+        if not self.image:
+            try:
+                self._get_image()
+            except Exception as e:
+                raise e
+
+    def _get_image():
+        pass
+
 
 def explode_bundle(file_path):
     """given the path to a bundle file, finds all
@@ -276,8 +442,18 @@ def chunk(file_path):
                 # this doesn't really need to happen, but
                 # just for good measure, set value to zero
                 stored_value = 0
-                
+
     return chunk_bytes
+
+def find_bundle(level, row, column):
+    pass
+
+def get_tile(level, row, column, root_directory):
+    """Returns a tile object containing an image corresponding to the
+    level, row, and columns passed as parameters, if an image is found
+    in a bundle file under the root directory (also passed to function).
+    """
+    pass
 
 def main():
     bundles = ["files/L00/R0480C0380.bundlx",
