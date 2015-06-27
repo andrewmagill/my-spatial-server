@@ -15,31 +15,35 @@ class Tile(object):
         self.row = row
         self.column = column
         self.position = position
+        self.path = path.replace('.bundlx','.bundle')
 
     def image(self):
         """Reads the bundle file starting at the tile's intended
         position, return an image (only PNG at the moment) if found.
         """
+
         try:
-            file = open(file_path, "r+b")
-        except FileNotFoundError as e:
-            raise e
+            file = open(self.path, "r+b")
+        #except FileNotFoundError as e:
+        #    raise e
         except (IOError, OSError) as e:
             raise e
         except Exception as e:
             raise e
 
+        mm = mmap.mmap(file.fileno(), 0)
+
         png_header_string = "\211PNG\r\n\032\n"
 
         begin_read = mm.find(png_header_string, self.position)
+
         if begin_read > self.position + 5:
             #raise Exception("Image does not exist")
             return
-        else if begin_read < self.position:
+        elif begin_read < self.position:
             #raise Exception("Image does not exist")
             return
 
-        mm = mmap.mmap(file.fileno(), 0)
         size = struct.unpack('i',mm[self.position:self.position+4])[0]
 
         image = mm[begin_read:begin_read + size]
@@ -67,17 +71,17 @@ class Bundle(object):
         """
         self.path   = path
         self.name   = self._parse_name(path)
-        self.level  = self._parse_level(self.name)
+        self.level  = self._parse_level(self.path)
         self.row    = self._parse_row(self.name)
         self.column = self._parse_col(self.name)
-        self.tiles  = self._parse_tiles(self.path, self.name)
+        self.tiles  = self._parse_tiles(self.path)
 
     def _parse_name(self, path):
         match = re.search('(R)[a-fA-F0-9]+(?=.bundl)', path)
         if match:
             return match.group(0)
         else:
-            raise Exception("Bad path: %s, could not"
+            raise Exception("Bad path: %s, could not "
                             "determine tile level." % path)
 
     def _parse_level(self, path):
@@ -86,9 +90,9 @@ class Bundle(object):
         match = re.search('L[0-9]{2}', path)
         if match:
             return match.group(0)
-        else:
-            raise Exception("Bad path: %s, could not"
-                            "determine tile level." % path)
+        #else:
+        #    raise Exception("Bad path: %s, could not"
+        #                    "determine tile level." % path)
 
     def _parse_row(self, name):
         """Returns an integer from a given bundle name representing
@@ -112,17 +116,17 @@ class Bundle(object):
 
         ex: R0480C0380 -> 896
         """
-        col_match = re.search('(?<=R)(.*)(?=C)', self.name)
+        col_match = re.search('[^C]+$', self.name)
 
         if not col_match:
             raise Exception('Not a bundle file')
 
-        col_hex = row_match.group(0)
-        col_int = int(row_hex, 16)
+        col_hex = col_match.group(0)
+        col_int = int(col_hex, 16)
 
         return col_int
 
-    def _parse_tiles(file_path):
+    def _parse_tiles(self, file_path):
         """Returns a list of decimal values stored in a .bundlx (bundle
         index) file that represent the locations of images stored in the
         corresponding .bundle file.
@@ -144,8 +148,8 @@ class Bundle(object):
         """
         try:
             file = open(file_path, "r+b")
-        except FileNotFoundError as e:
-            raise e
+        #except FileNotFoundError as e:
+        #    raise e
         except (IOError, OSError) as e:
             raise e
         except Exception as e:
@@ -179,16 +183,16 @@ class Bundle(object):
                     stored_value += chunk_bytes[3] * 16777216
                     stored_value += chunk_bytes[4] * 4294967296
 
+                    # i don't think i have this right, we'll see
+                    row = (row_count / 4) + self.row
+                    col = (col_count / 2) + self.column
+
+                    tiles.append(Tile(row, col, stored_value, self.path))
+
                     chunk_bytes = []
                     # this doesn't really need to happen, but
                     # just for good measure, set value to zero
                     stored_value = 0
-
-                    # i don't think i have this right, we'll see
-                    row = (row_count / 4) + self.row
-                    col = (col_count / 2) + self.col
-
-                    tiles.append(Tile(row, col, store_value))
 
                     row_count += 1
                     if row_count > 255:
@@ -201,6 +205,7 @@ class Bundle(object):
 
     def get_image(self, row, column):
         """Returns the image, if it exists, for the given row, and column."""
+
         if type(row) is str:
             row = int(row)
 
@@ -212,6 +217,7 @@ class Bundle(object):
 
         if not type(column) is int:
             raise TypeError("Tile column must be a string or an int")
+
 
         if row < 0 or column < 0:
             raise ValueError("Tile row and column must "
@@ -234,7 +240,7 @@ class Level(object):
     bundles  = []
 
     def __init__(self):
-        """Empty default constructor""""
+        """Empty default constructor"""
         pass
 
     def append(self, bundle):
@@ -243,8 +249,10 @@ class Level(object):
             raise TypeError("Incorrect type, not a bundle object.")
 
         level = bundle.level
+
         if not level:
-            raise Exception("Bundle does not belong to a level")
+            #raise Exception("Bundle does not belong to a level")
+            return
 
         if not Level.levels.has_key(level):
             Level.levels[level] = len(Level.bundles)
@@ -276,7 +284,7 @@ class Level(object):
             else:
                 index = Level.levels[key]
                 if index <= len(Level.bundles):
-                return Level.bundles[index]
+                    return Level.bundles[index]
         else:
             raise TypeError("Index must be valid string or int.")
 
@@ -293,7 +301,6 @@ class Level(object):
         """Returns the tile, if it exists, for the given
         level, row, and column.
         """
-
         level = "L%02d" % level
         if not self.exists(level):
             raise Exception('Level %s does not exist in cache' % level)
@@ -301,19 +308,23 @@ class Level(object):
         bundles = self.bundles[self.levels[level]]
 
         for bundle in bundles:
-            bundle_row, bundle_col = self._extract_row_col(bundle)
-            if bundle_row > row:
+
+            if bundle.row > row:
                 continue
-            if bundle_col > column:
+            if bundle.column > column:
                 continue
-            if bundle_row > row - Cache.MAX_ROWS:
-                if bundle_col > column - Cache.MAX_COLUMNS:
+
+            if bundle.row > row - Cache.MAX_ROWS:
+                if bundle.column > column - Cache.MAX_COLUMNS:
                     return bundle.get_image(row, column)
 
 class Cache(object):
     """Represents the map cache, with scale levels
     populated by tile bundles.
     """
+    MAX_ROWS    = 128
+    MAX_COLUMNS = 128
+
     def __init__(self, root_path):
         """Constructs a Cache object given a valid root path.
         A valid path contains bundle and index files organized
@@ -367,13 +378,13 @@ class Cache(object):
                 file_path = os.path.join(root, file)
                 file_name, file_ext = os.path.splitext(file_path)
 
-                if not file_ext == Cache.BUNDLX:
+                if not file_ext.lower() == ".bundlx":
                     continue
 
                 try:
-                    bundle = Bundle(file_path):
-                except FileNotFoundError as e:
-                    raise e
+                    bundle = Bundle(file_path)
+                #except FileNotFoundError as e:
+                #    raise e
                 except (IOError, OSError) as e:
                     raise e
                 except Exception as e:
@@ -399,8 +410,25 @@ class Cache(object):
 
 def main():
     cache = Cache('files/')
-    tile_image = cache.get_tile(2, 4751, 3735)
-    print "howdy"
+    tile_image = cache.get_tile(0, 1177, 906)
+    if tile_image:
+        file = open('image.png','w+b')
+        file.write(tile_image)
+        file.close()
+
+    #tile row: 1176, column: 906) L00 21696#
+    #tile row: 1176, column: 906) L00 74943
+    #tile row: 1176, column: 906) L00 115533
+    #tile row: 1176, column: 906) L00 159953
+    #tile row: 1177, column: 906) L00 170906
+    #tile row: 1177, column: 906) L00 21716#
+
+    #tile row: 1208, column: 906) L00 21184#
+    #tile row: 1208, column: 906) L00 72895
+    #tile row: 1208, column: 906) L00 99982
+    #tile row: 1208, column: 906) L00 144439
+    #tile row: 1209, column: 906) L00 168134
+    #tile row: 1209, column: 906) L00 21204#
 
 if __name__== "__main__":
     main()
