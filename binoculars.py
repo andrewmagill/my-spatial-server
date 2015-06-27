@@ -37,8 +37,6 @@ class Tile(object):
 
         begin_read = mm.find(png_header_string, self.position-1)
 
-        print begin_read, self.position
-
         if begin_read > self.position + 5:
             #raise Exception("Image does not exist")
             return
@@ -47,8 +45,6 @@ class Tile(object):
             return
 
         size = struct.unpack('i',mm[self.position:self.position+4])[0]
-
-        print size
 
         #end_read = mm.find("IEND", begin_read)
 
@@ -196,10 +192,6 @@ class Bundle(object):
                     row = (row_count) + self.row
                     col = (col_count) + self.column
 
-
-                    print row_count, col_count
-
-
                     tiles.append(Tile(row, col, stored_value, self.path))
 
                     chunk_bytes = []
@@ -237,7 +229,6 @@ class Bundle(object):
                              "be greater than zero.")
 
         for tile in self.tiles:
-            print "tile: {} {}, seeking {} {}".format(tile.row, tile.column, row, column)
             if tile.row == row and tile.column == column:
                 try:
                     return tile.image()
@@ -438,60 +429,48 @@ class Cache(object):
 
 def bundle_name(row, col):
     # round down to nearest 128
-    row = row / 128
+    row = int(row / 128)
     row = row * 128
 
-    col = col / 128
+    col = int(col / 128)
     col = col * 128
 
     row = "%04x" % row
     col = "%04x" % col
 
     name = "R{}C{}".format(row, col)
-    print name
     return name
 
 def index_position(row, col):
-    print "DEBUG: index_position({},{})".format(row, col)
-
     row = row % 128
     col = col % 128
-
-    print "DEBUG: calculated row: {} col: {}".format(row, col)
 
     base_pos = col * 128 * 5 + 16
     offset = row * 5
 
     position = base_pos + offset
-
-    print "DEBUG: calculated position: {}".format(position)
-
-# if row is 60 and col is 1, position = 336
-# if row is 244 and col is 2, position is 887
-#
-#
     return position
 
 def sum_bytes(chunk):
-    print "DEBUG: call to sum_bytes({})".format(chunk)
-
     if len(chunk) > 5:
         raise Exception("Invalid byte chunk")
 
-    value  = int(chunk[0].encode('hex'), 16) * 1
-    value += int(chunk[1].encode('hex'), 16) * 256
-    value += int(chunk[2].encode('hex'), 16) * 65536
-    value += int(chunk[3].encode('hex'), 16) * 16777216
-    value += int(chunk[4].encode('hex'), 16) * 4294967296
-
-    print "DEBUG: Returning from sum_bytes with: {}".format(value)
+    if type(chunk[0]) is int:
+        value  = chunk[0] * 1
+        value += chunk[1] * 256
+        value += chunk[2] * 65536
+        value += chunk[3] * 16777216
+        value += chunk[4] * 4294967296
+    else:
+        value  = int(chunk[0].encode('hex'), 16) * 1
+        value += int(chunk[1].encode('hex'), 16) * 256
+        value += int(chunk[2].encode('hex'), 16) * 65536
+        value += int(chunk[3].encode('hex'), 16) * 16777216
+        value += int(chunk[4].encode('hex'), 16) * 4294967296
 
     return value
 
 def tile_position(path, row, column):
-
-    print "DEBUG: call to tile_position({}, {}, {})".format(path, row, column)
-
     position = index_position(row, column)
     path += ".bundlx"
     file = open(path, 'r+b')
@@ -499,14 +478,9 @@ def tile_position(path, row, column):
     tile_pos = sum_bytes(mm[position:position+5])
     mm.close()
 
-    print "DEBUG: Returning from tile_position with: {}".format(tile_pos)
-
     return tile_pos
 
 def tile_image(path, row, column):
-
-    print "DEBUG: call to tile_image({}, {}, {})".format(path, row, column)
-
     position = tile_position(path, row, column)
     path += ".bundle"
     file = open(path, 'r+b')
@@ -515,7 +489,15 @@ def tile_image(path, row, column):
     image = mm[position+4:position + size]
     mm.close()
 
-    print "DEBUG: Returning from tile_image with image length {}".format(len(image))
+    return image
+
+def get_map_tile(level, row, column):
+    level = "L%02d" % int(level)
+    row   = int(row)
+    col   = int(column)
+
+    path  = os.path.join("files/", level, bundle_name(row, col))
+    image = tile_image(path, row, col)
 
     return image
 
@@ -543,12 +525,12 @@ def main(args):
 
     if image:
         name = '{}R{}C{}.png'.format(level, row, col)
-        print "DEBUG: writing to file {}".format(name)
+        print("DEBUG: writing to file {}".format(name))
         file = open(name,'w+b')
         file.write(image)
         file.close()
     else:
-        print "image not found"
+        print("image not found")
 
     #tile row: 1176, column: 906) L00 21696#
     #tile row: 1176, column: 906) L00 74943

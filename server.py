@@ -46,6 +46,21 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.views.decorators.http import etag
 
+import binoculars
+
+class TileImageForm(forms.Form):
+    lod = forms.IntegerField(min_value=0, max_value=100)
+    y = forms.IntegerField(min_value=0, max_value=10000000)
+    x = forms.IntegerField(min_value=0, max_value=10000000)
+
+    def generate(self, image_format='PNG'):
+        lod = self.cleaned_data['lod']
+        y = self.cleaned_data['y']
+        x = self.cleaned_data['x']
+
+        image = binoculars.get_map_tile(lod, y, x)
+        return image
+
 class TileForm(forms.Form):
 
     lod = forms.IntegerField(min_value=0, max_value=100)
@@ -102,14 +117,29 @@ def generate_tile_etag(request, lod, y, x):
     content = 'Tile: {} / {} / {}'.format(lod, y, x)
     return hashlib.sha1(content.encode('utf-8')).hexdigest()
 
+#@etag(generate_tile_etag)
+#def tile(request, lod, y, x):
+#    form = TileForm({'lod': lod,'y': y, 'x': x})
+#
+#    if form.is_valid():
+#        image = form.generate()
+#    return HttpResponse(image, content_type='image/png')
+#        else:
+#    return HttpResponseBadRequest('Invalid Tile Request')
+
 @etag(generate_tile_etag)
 def tile(request, lod, y, x):
-  form = TileForm({'lod': lod,'y': y, 'x': x})
-  if form.is_valid():
-    image = form.generate()
-    return HttpResponse(image, content_type='image/png')
-  else:
-    return HttpResponseBadRequest('Invalid Tile Request')
+    myform = TileImageForm({'lod': lod,'y': y, 'x': x})
+    form = TileForm({'lod': lod,'y': y, 'x': x})
+
+    if myform.is_valid():
+        image = myform.generate()
+        if not image:
+            if form.is_valid():
+                image = form.generate()
+        return HttpResponse(image, content_type='image/png')
+    else:
+        return HttpResponseBadRequest('Invalid Tile Request')
 
 def index(request):
   example = reverse('tile', kwargs={'lod':1, 'y':2375, 'x':1873})
