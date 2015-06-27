@@ -14,6 +14,219 @@ class bcolors:
     ONWHITE = '\033[48m'
     WHITE = '\033[37m'
 
+class Bundle(object):
+    """Represents a bundle file."""
+
+    def __init__(self, path):
+        """Constructor requires only one parameters, the
+        file path to the bundle, which should include the
+        file name.
+
+        The class extracts integer row and column values
+        from the given name. An exception is raised if a
+        non-standard name is provided.
+
+        Standard naming convention is 'R' + the hex value
+        for the first row + 'C' + the hex value for the
+        first column.
+
+        ex: R0480C0380
+        """
+        self.path   = path
+        self.name   = self._parse_name(path)
+        self.level  = self._parse_level(self.name)
+        self.row    = self._parse_row(self.name)
+        self.column = self._parse_col(self.name)
+        self.tiles  = self._parse_tiles(self.path, self.name)
+
+    def _parse_name(self, path):
+        match = re.search('(R)[a-fA-F0-9]+(?=.bundl)', path)
+        if match:
+            return match.group(0)
+        else:
+            raise Exception("Bad path: %s, could not"
+                            "determine tile level." % path)
+
+    def _parse_level(self, path):
+        """Returns substring like 'L00', or 'L01', if it exists
+        in the given path. Raises an exception if not found."""
+        match = re.search('L[0-9]{2}', path)
+        if match:
+            return match.group(0)
+        else:
+            raise Exception("Bad path: %s, could not"
+                            "determine tile level." % path)
+
+    def _parse_row(self, name):
+        """Returns an integer from a given bundle name representing
+        the first row contained in the bundle.
+
+        ex: R0480C0380 -> 1152
+        """
+        row_match = re.search('(?<=R)(.*)(?=C)', self.name)
+
+        if not row_match:
+            raise Exception('Not a bundle file')
+
+        row_hex = row_match.group(0)
+        row_int = int(row_hex, 16)
+
+        return row_int
+
+    def _parse_col(self, name):
+        """Returns an integer from a given bundle name representing
+        the first column contained in the bundle.
+
+        ex: R0480C0380 -> 896
+        """
+        col_match = re.search('(?<=R)(.*)(?=C)', self.name)
+
+        if not col_match:
+            raise Exception('Not a bundle file')
+
+        col_hex = row_match.group(0)
+        col_int = int(row_hex, 16)
+
+        return col_int
+
+    def _parse_tiles(file_path):
+        """Returns a list of decimal values stored in a .bundlx (bundle
+        index) file that represent the locations of images stored in the
+        corresponding .bundle file.
+
+        The values are stored in 5 byte chunks using little endian representation
+        to store large numbers.  Each .bundlx file is exactly the same size; the
+        position of each chunk in the .bundlx indicates the row and column position
+        of the particular map tile image in the overall scheme.  These values
+        should be added to the top left origin row and column found in the bundle
+        file name.
+
+        Each chunk contains at least two bytes.  The first byte represents the row,
+        the second represents the column.  However, only 'blank' chunks represent
+        the row and column!  Non blank chunks use all 5 byts to represent the
+        postition of the image in the .bundle file.
+
+        It is up to the developer to determine what to do with the bogus values
+        found in the 'blank' chunks.
+        """
+        try:
+            file = open(file_path, "r+b")
+        except FileNotFoundError as e:
+            raise e
+        except (IOError, OSError) as e:
+            raise e
+        except Exception as e:
+            raise e
+
+        mm = mmap.mmap(file.fileno(), 0)
+
+        chunk_bytes = []
+        tiles = []
+
+        # first row is the 60th in
+        # the column, don't understand why
+        row_count = 60
+        col_count = 0
+
+        for i in range(len(mm)):
+
+            byte = mm[i]
+            base16 = byte.encode('hex')
+            base10 = int(base16, 16)
+
+            chunk_bytes.append(base10)
+
+            if i % 5 == 0:
+                if not i == 0:
+                    # decimal value is store using
+                    # little endian representation
+                    stored_value  = chunk_bytes[0] * 1
+                    stored_value += chunk_bytes[1] * 256
+                    stored_value += chunk_bytes[2] * 65536
+                    stored_value += chunk_bytes[3] * 16777216
+                    stored_value += chunk_bytes[4] * 4294967296
+
+                    chunk_bytes = []
+                    # this doesn't really need to happen, but
+                    # just for good measure, set value to zero
+                    stored_value = 0
+
+                    # i don't think i have this right, we'll see
+                    row = (row_count / 4) + self.row
+                    col = (col_count / 2) + self.col
+
+                    tiles.append({"row" : row,
+                                  "col" : col,
+                                  "pos" : stored_value})
+
+                    row_count += 1
+                    if row_count > 255:
+                        row_count = 0
+                        col_count += 1
+
+        mm.close()
+
+        return tiles
+
+class Level(object):
+    levels = {}
+    bundles  = []
+
+    def __init__(self):
+        pass
+
+    def append(self, bundle):
+        """Appends a Bundle to it's level."""
+        if not type(bundle) is Bundle:
+            raise TypeError("Incorrect type, not a bundle object.")
+
+        level = bundle.level
+        if not level:
+            raise Exception("Bundle does not belong to a level")
+
+        if not Level.levels.has_key(level):
+            Level.levels[level] = len(Level.bundles)
+
+        index = Level.levels[level]
+
+        if index >= len(Level.bundles):
+            Level.bundles.append([bundle])
+        else:
+            Level.bundles[index].append(bundle)
+
+    def __getitem__(self, key):
+        """Returns a list of bundles, if present. Raises exception
+        if level does not exist. Raises type error if index is not
+        an int of str, raises value error if value is invalid.
+
+        Valid string = 'L' + two digits, ex: 'L00', 'L01', ...
+        Valid int = 0 to 99
+        """
+        if type(key) is int:
+            if key < 0 or index > 99:
+                raise ValueError('Level index must be between 0 and 99.')
+            else:
+                key = "L%02d" % key
+
+        if type(key) is str:
+            if not self.exists(key):
+                raise Exception("Bundles do not exist for level %s" % key)
+            else:
+                index = Level.levels[key]
+                if index <= len(Level.bundles):
+                return Level.bundles[index]
+        else:
+            raise TypeError("Index must be valid string or int.")
+
+    def exists(self, key):
+        """Returns True if level exists, False otherwise."""
+        if Level.levels.has_key(key):
+            index = Level.levels[key]
+            if index <= len(Level.bundles):
+                return True
+
+        return False
+
 class Cache(object):
     """Represents a map tile cache"""
 
@@ -41,7 +254,6 @@ class Cache(object):
             raise Exception('Level %s does not exist in cache' % level)
 
         bundles = self.bundles[self.levels[level]]
-
 
         for bundle in bundles:
             bundle_row, bundle_col = self._extract_row_col(bundle)
