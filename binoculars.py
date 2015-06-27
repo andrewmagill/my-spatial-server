@@ -1,4 +1,5 @@
 import os, sys, mmap, re, struct
+from collections import namedtuple
 
 class Tile(object):
     """Represents an image tile found in a bundle file"""
@@ -470,13 +471,23 @@ def sum_bytes(chunk):
 
     return value
 
+TileInfo = namedtuple("TileInfo",["path","row","column"])
+tile_pos_dict = {}
+
 def tile_position(path, row, column):
+    tile_info = TileInfo(path=path, row=row, column=column)
+    if tile_info in tile_pos_dict.keys():
+        print("returning positiong from dictionary")
+        return tile_pos_dict[tile_info]
+
     position = index_position(row, column)
     path += ".bundlx"
     file = open(path, 'r+b')
     mm = mmap.mmap(file.fileno(), 0)
     tile_pos = sum_bytes(mm[position:position+5])
     mm.close()
+
+    tile_pos_dict[tile_info] = tile_pos
 
     return tile_pos
 
@@ -497,7 +508,14 @@ def get_map_tile(level, row, column):
     col   = int(column)
 
     path  = os.path.join("files/", level, bundle_name(row, col))
-    image = tile_image(path, row, col)
+    image = None
+
+    try:
+        image = tile_image(path, row, col)
+    except (IOError, OSError) as e:
+        print("{}: {}".format(type(e), e.strerror))
+    except Exception as e:
+        print("{}: {}".format(type(e), e.args))
 
     return image
 
