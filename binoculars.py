@@ -482,23 +482,48 @@ def tile_position(path, row, column):
 
     position = index_position(row, column)
     path += ".bundlx"
+
+    start = int(position/mmap.PAGESIZE) * mmap.PAGESIZE
+
     file = open(path, 'r+b')
-    mm = mmap.mmap(file.fileno(), 0)
-    tile_pos = sum_bytes(mm[position:position+5])
+    mm = mmap.mmap(file.fileno(), mmap.PAGESIZE, offset=start)
+
+    m = position - start
+    n = m + 5
+
+    tile_pos = sum_bytes(mm[m:n])
+
     mm.close()
+    file.close()
 
     tile_pos_dict[tile_info] = tile_pos
-
     return tile_pos
 
 def tile_image(path, row, column):
     position = tile_position(path, row, column)
+
     path += ".bundle"
     file = open(path, 'r+b')
-    mm = mmap.mmap(file.fileno(), 0)
-    size = struct.unpack('i',mm[position:position+4])[0]
-    image = mm[position+4:position + size]
+
+    # this is a hack that could break things,
+    # but hopefully saves a lot of memory
+    length = 8 * mmap.PAGESIZE
+    start = int(position/mmap.PAGESIZE) * mmap.PAGESIZE
+
+    mm = mmap.mmap(file.fileno(), length, offset=start)
+
+    m = position-start
+    n = m + 4
+
+    size = struct.unpack('i',mm[m:n])[0]
+
+    m = n
+    n = m + size
+
+    image = mm[m:n]
+
     mm.close()
+    file.close()
 
     return image
 
