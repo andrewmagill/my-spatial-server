@@ -14,6 +14,7 @@ STREET_PRE_TYPE_TRANS = {"INTERSTATE"    : "IH",
                         "STATE HIGHWAY" : "SH",
                         "US ROUTE"      : "US",
                         "US ROAD"       : "US",
+                        "ROUTE"         : "US",
                         "FARM ROAD"     : "FM",
                         "RANCH ROAD"    : "RR",
                         "FARM TO MARKET": "FM",
@@ -90,78 +91,13 @@ def construct_query(parsed_address):
 
         clause_list.append("prefix_dir = {}".format(value))
 
-    # logic gets a little messy here to account for occasional parsing
-    # errors. i haven't tried training the parser on my data, that might work.
-
-    # we want to check to see if th parser picked up a street name. if it
-    # did not, the street name might actually be hiding in the prefix type
-
-    # we want:
-    # (u'PREFIX_TYP', u'US'), (u'STREET_NAM', u'183'), (u'STREET_TYP', u'HWY')
-    # not:
-    # ('StreetNamePreType', u'US 183 HWY')])
-
-    # if there is a street name, it might incorrectly include the street type,
-    # as seen in the example above. this also seems to happen when a post
-    # direction is present in the address. we will need to remove the street
-    # type from the name, set it as the post type, and set the direction
-    # (nb, sb, etc), if present, to the post dir
-
-    if 'StreetName' in address_parts:
-        # check to see if street name includes street type
-
-    else: # no street name
-        # check to see if there is a pre type. if the length of the
-        # pre type is > 2, then it's probably holding more than the pre type
-        if 'StreetNamePreType' in address_parts:
-            pre_type = address_parts['StreetNamePreType'].upper()
-            if len(pre_type) > 2:
-                pre_type_parts= pre_type.split(" ")
-                if pre_type_parts[0] in STREET_PRE_TYPES
-                    clause_list.append(prefix_typ = pre_type_parts[0])
-
-
-
-
-    if not 'StreetName' in address_parts:
-            if 'StreetNamePreType' in address_parts:
-                value = address_parts['StreetNamePreType'].upper()
-
     if 'StreetNamePreType' in address_parts:
         value = address_parts['StreetNamePreType'].upper()
-        if not 'StreetName' in address_parts:
-            clause_list.append("street_name = {}".format(value))
-            #print address_parts['StreetNamePreType']
-        else:
-            clause_list.append("prefix_typ = {}".format(value))
-            #print address_parts['StreetNamePreType']
 
-    # frequent edge case:
-    # parser sets StreetPostType to the post direction (nb, sb, ...)
-    # and the actual post type becomes part of the street name
-    # i'm attempting to check for such cases and set things to
-    # the correct fields.
-    # ie: StreetName = "Hank Rd", StreetPostType = "SB"
-    # becomes: StreetName = "Hank", StreetPostType = "Rd", StreetPostDir = "SB"
-    if 'StreetNamePostType' in address_parts:
-        post_type_value = address_parts['StreetNamePostType'].upper()
-        # post type should be st, or rd, not nb, or sb
-        if post_type_value in POST_DIRECTIONS:
-            # check to see if the type was included in the street name
-            if 'StreetName' in address_parts:
-                value = address_parts['StreetName'].upper()
-                value_parts = value.split(" ")
-                if len(value_parts) > 1:
-                    # check the last word in street name, determine if it's
-                    # actually a street type and should not be part of the name
-                    if value_parts[-1] in STREET_TYPES
-                        value = " ".join(value_parts[:len(value_parts)-1])
-                        clause_list.append("STREET_TYP = {}".format(value))
-        else:
-            # post type was not a post direction, so we'll use the
-            # value to query SUFFIX_DIR. This is the best case.
-            clause_list.append("street_name = {}".format(value))
+        if value == "ROUTE":
+            value = "US"
 
+        clause_list.append("prefix_typ = {}".format(value))
 
     if 'StreetName' in address_parts:
         value = address_parts['StreetName'].upper()
@@ -169,10 +105,14 @@ def construct_query(parsed_address):
 
     if 'StreetNamePostType' in address_parts:
         value = address_parts['StreetNamePostType'].upper()
-        clause_list.append("STREET_TYP = {}".format(value))
 
-    if 'StreetNamePostType' in address_parts:
-        value = address_parts['StreetNamePostType'].upper()
+        if value in POST_DIRECTIONS:
+            clause_list.append("suffix_dir = {}".format(value))
+        else:
+            clause_list.append("street_typ" = {}".format(value))
+
+    if 'StreetNamePostDirectional' in address_parts:
+        value = address_parts['StreetNamePostDirectional'].upper()
         clause_list.append("suffix_dir = {}".format(value))
 
     if len(clause_list) <= 0:
@@ -197,6 +137,11 @@ def query_db(query):
 
 def locate(address_string):
     clean_string = sanitize(address_string)
+
+    # handle an edge case with US before parsing
+    if "US " in clean_string:
+        clean_string.replace("US ", "ROUTE")
+
     parse_result = usaddress.tag(clean_string)
     query = construct_query(parse_result)
     result_table = query_db(query)
