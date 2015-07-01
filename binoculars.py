@@ -1,6 +1,8 @@
 import os, sys, mmap, re, struct
 from collections import namedtuple
 
+import random, time
+
 class Tile(object):
     """Represents an image tile found in a bundle file"""
 
@@ -477,16 +479,21 @@ tile_pos_dict = {}
 def tile_position(path, row, column):
     tile_info = TileInfo(path=path, row=row, column=column)
     if tile_info in tile_pos_dict.keys():
-        print("returning positiong from dictionary")
+        #print("returning positiong from dictionary")
         return tile_pos_dict[tile_info]
 
     position = index_position(row, column)
     path += ".bundlx"
 
-    start = int(position/mmap.PAGESIZE) * mmap.PAGESIZE
-
     file = open(path, 'r+b')
-    mm = mmap.mmap(file.fileno(), mmap.PAGESIZE, offset=start)
+
+    length = position % mmap.PAGESIZE + 5
+    start = int(position/mmap.PAGESIZE) * mmap.PAGESIZE
+    file_size = os.fstat(file.fileno()).st_size
+    if length > file_size - start:
+        length = file_size - start
+
+    mm = mmap.mmap(file.fileno(), length, offset=start)
 
     m = position - start
     n = m + 5
@@ -509,18 +516,26 @@ def tile_image(path, row, column):
     # but hopefully saves a lot of memory
     length = 8 * mmap.PAGESIZE
     start = int(position/mmap.PAGESIZE) * mmap.PAGESIZE
+    file_size = os.fstat(file.fileno()).st_size
+    if length > file_size - start:
+        length = file_size - start
 
     mm = mmap.mmap(file.fileno(), length, offset=start)
 
+    # read the size of the embedded image
     m = position-start
     n = m + 4
 
     size = struct.unpack('i',mm[m:n])[0]
 
+    # read the size the image itself
     m = n
     n = m + size
 
     image = mm[m:n]
+
+    print("path: {}, pos: {}, size: {}, row: {}, col: {}"\
+                    .format(path, position, size, row, column))
 
     mm.close()
     file.close()
@@ -546,19 +561,34 @@ def get_map_tile(level, row, column):
 
 ######### keep it simple #########
 
-def main(args):
-    #cache = Cache('files/')
-    #level = args[1]
-    #row = args[2]
-    #col = args[3]
-    #tile_image = cache.get_tile(level, row, col)
-    #if tile_image:
-    #    file = open('L{}R{}C{}.png'.format(level, row, col),'w+b')
-    #    file.write(tile_image)
-    #    file.close()
-    #else:
-    #    print "image not found"
+def time_it(num):
 
+    starttime = time.time()
+
+    # don't burn out your hd
+    if num > 100:
+        print("that's too big")
+        return
+
+    total = 0
+
+    while num:
+
+        row = random.randint(0, 255) + 37888
+        col = random.randint(0, 255) + 29824
+
+        get_map_tile(5, row, col)
+
+        num -= 1
+        total += 1
+
+    endtime = time.time()
+
+    duration = endtime - starttime
+    avgtime = duration / total
+    print("average time: {}".format(avgtime))
+
+def main(args):
     level = "L%02d" % int(args[1])
     row   = int(args[2])
     col   = int(args[3])
@@ -574,31 +604,6 @@ def main(args):
         file.close()
     else:
         print("image not found")
-
-    #tile row: 1176, column: 906) L00 21696#
-    #tile row: 1176, column: 906) L00 74943
-    #tile row: 1176, column: 906) L00 115533
-    #tile row: 1176, column: 906) L00 159953
-    #tile row: 1177, column: 906) L00 170906
-    #tile row: 1177, column: 906) L00 21716#
-
-    #tile row: 1208, column: 906) L00 21184#
-    #tile row: 1208, column: 906) L00 72895
-    #tile row: 1208, column: 906) L00 99982
-    #tile row: 1208, column: 906) L00 144439
-    #tile row: 1209, column: 906) L00 168134
-    #tile row: 1209, column: 906) L00 21204#
-
-    #~/working/py/binstuff * master$ python binoculars.py 0 1188 936
-    #R0480C0380
-    #DEBUG: call to tile_image(files/L00/R0480C0380, 1188, 936)
-    #DEBUG: call to tile_position(files/L00/R0480C0380, 1188, 936)
-    #DEBUG: index_position(1188,936)
-    #DEBUG: calculated row: 90 column: 12816 position: 12906
-    #DEBUG: call to sum_bytes(X()
-    #DEBUG: Returning from sum_bytes with: 10372
-    #DEBUG: Returning from tile_position with: 10372
-    #DEBUG: Returning from tile_image with:
 
 if __name__== "__main__":
     main(sys.argv)
