@@ -5,6 +5,7 @@
 *.py[cod]
 *.sqlite3
 bin/
+ignore/
 files/
 shapefiles/
 fonts/
