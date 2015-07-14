@@ -1,183 +1,295 @@
-import sys
-from osgeo import ogr
-import usaddress
-import re, string
+import os, sys, re, usaddress, logging, mappings
+from osgeo import ogr, osr
 
-STREET_PRE_DIR_TRANS = {"NORTH" : "N",
-                        "SOUTH" : "S",
-                        "EAST"  : "E",
-                        "WEST"  : "W"}
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-STREET_PRE_TYPES = ["US", "IH", "SH", "CR", "FM", "RR"]
+class USFields(object):
+    AddressNumber             = 'AddressNumber'
+    AddressNumberSuffix       = 'AddressNumberSuffix'
+    StreetNamePreDirectional  = 'StreetNamePreDirectional'
+    StreetNamePreType         = 'StreetNamePreType'
+    StreetName                = 'StreetName'
+    StreetNamePostDirectional = 'StreetNamePostDirectional'
+    StreetNamePostType        = 'StreetNamePostType'
 
-STREET_PRE_TYPE_TRANS = {"INTERSTATE"    : "IH",
-                        "STATE HIGHWAY" : "SH",
-                        "US ROUTE"      : "US",
-                        "US ROAD"       : "US",
-                        "ROUTE"         : "US",
-                        "FARM ROAD"     : "FM",
-                        "RANCH ROAD"    : "RR",
-                        "FARM TO MARKET": "FM",
-                        "COUNTY RD"     : "CR"}
+class ATXFields(object):
+    address     = 'address'
+    address_fr  = 'address_fr'
+    prefix_dir  = 'prefix_dir'
+    prefix_typ  = 'prefix_typ'
+    street_nam  = 'street_nam'
+    suffix_dir  = 'suffix_dir'
+    street_typ  = 'street_typ'
+    segment_id  = 'segment_id'
+    parent_pla  = 'parent_pla'
+    place_id    = 'place_id'
+    full_stree  = 'full_stree'
 
-STREET_PRE_TYPE_TROUBLE = {"FARM"  : "FM", "RANCH"  : "RR",
-                           "STATE" : "SH", "COUNTY" : "CR"}
+class Messages(object):
+    str_req = "String required"
+    list_req = "List required"
+    dict_req = "Dictionary required"
+    bad_results = "Parser results are not valid"
+    bad_string = "Invalid search string"
+    bad_query = "Query did not return any results"
 
-STREET_POST_TYPES = ["RD", "DR", "ST", "BLVD", "LN", "TRL", "CIR", "CT",
-                     "WAY", "HWY", "HIGHWAY", "RUN"]
+STREET_ADDRESS = "Street Address"
 
-STREET_POST_TYPE_TRANS = {"ROAD"      : "RD",
-                          "DRIVE"     : "DR",
-                          "STREET"    : "ST",
-                          "BOULEVARD" : "BLVD",
-                          "LANE"      : "LN",
-                          "TRAIL"     : "TRL",
-                          "CIRCLE"    : "CIR",
-                          "HIGHWAY"   : "HWY",
-                          "COURT"     : "CT"}
+field_map = {
+    USFields.AddressNumber             : ATXFields.address,
+    USFields.AddressNumberSuffix       : ATXFields.address_fr,
+    USFields.StreetNamePreDirectional  : ATXFields.prefix_dir,
+    USFields.StreetNamePreType         : ATXFields.prefix_typ,
+    USFields.StreetName                : ATXFields.street_nam,
+    USFields.StreetNamePostDirectional : ATXFields.suffix_dir,
+    USFields.StreetNamePostType        : ATXFields.street_typ,
+}
 
-POST_DIRECTIONS = ["NB", "SB", "EB", "WB"]
+ADDRESS_FILE_PATH = r"shapefiles/address_point/address_point.shp"
 
-POST_DIR_TRANS = {"NORTHBOUND"   : "NB", "SOUTHBOUND"  : "SB",
-                  "EASTBOUND"    : "EB", "WESTBOUND"   : "WB",
-                   "NORTH BOUND" : "NB", "SOUTH BOUND" : "SB",
-                   "EAST BOUND"  : "EB", "WEST BOUND"  : "WB",
-                   "NORTH-BOUND" : "NB", "SOUTH-BOUND" : "SB",
-                   "EAST-BOUND"  : "EB", "WEST-BOUND"  : "WB"}
+OGR_SHP_DRIVER = 'ESRI Shapefile'
 
-def sanitize(user_input):
+EPSG_2277 = 2277
+
+ADDRESS_OVER_UNDER = 20
+
+def _sanitize(user_input):
+    """strip unwated characters from user input
+    """
+    if not type(user_input) is str:
+        raise TypeError(Messages.str_req)
+
     # I'm sure this could be done better
     clean = re.sub(r"[;\(\)\[\]\<\>=:*\%\$\`\?]", "", user_input)
     return clean
 
-def parsed_list_to_dict(parsed_address):
-    for part in parsed_address:
-        print part
-    raise NotImplementedError("parsed_list_to_dict not yet implemented")
+def _pre_hack(address_string):
+    """find and replace some stuff, hopefully won't be necessary
+    after training
+    """
+    if not type(address_string) is str:
+        raise TypeError(Messages.str_req)
 
-def construct_query(parsed_address):
-    if not parsed_address:
-        raise Exception("Parser did not return a valid response")
+    address_string = address_string.upper()
+    words = address_string.split(' ')
+    for word in words:
+        if word in mappings.STREET_PRE_TYPE_TRANS.keys():
+            address_string = address_string.replace(word, mappings.STREET_PRE_TYPE_TRANS[word])
+        if word in mappings.STREET_POST_TYPE_TRANS.keys():
+            address_string = address_string.replace(word, mappings.STREET_POST_TYPE_TRANS[word])
+        if word in mappings.POST_DIR_TRANS.keys():
+            address_string = address_string.replace(word, mappings.POST_DIR_TRANS[word])
 
-    if type(parsed_address) is list:
-        address_parts = parsed_list_to_dict(parsed_address)
-    else:
-        parse_result_type = parsed_address[1]
+    return address_string
 
-        if parse_result_type == 'ambiguous':
-            raise ValueError("Not a valid address")
+def _post_hack(address_parts):
+    """put parts in the right place, like street type in
+    post-type rather than post-direction field. hopefully
+    won't be necessary after training
+    """
+    #if not type(address_parts) is dict:
+    #    raise TypeError("dict required")
 
-        if not parse_result_type == 'Street Address':
-            raise Exception("Parser results are confusing")
+    return address_parts
 
-        address_parts = parsed_address[0]
+def _translate_to_atx(address_parts):
+    """takes usfields tuple and returns atx dict
+    """
+    if not len(address_parts) == 2:
+        raise Exception(Messages.bad_results)
+
+    result_type = address_parts[1]
+
+    if not result_type == STREET_ADDRESS:
+        raise Exception(Messages.bad_string)
+
+    ordered_dict = address_parts[0]
+    atx_address_parts = {}
+
+    for key, value in ordered_dict.items():
+        try:
+            atx_field = field_map[key]
+            atx_address_parts[atx_field] = value
+        except:
+            logger.info("No ATX map for USAddress field: %s" % key)
+
+    return atx_address_parts
+
+def _parse(address_string):
+    """parses address string into atx address parts,
+    returns list
+    """
+    if not type(address_string) is str:
+        raise TypeError(Messages.str_req)
+
+    address_string = _sanitize(address_string)
+    address_string = _pre_hack(address_string)
+    address_parts = usaddress.tag(address_string)
+    address_parts = _post_hack(address_parts)
+    address_parts = _translate_to_atx(address_parts)
+    return address_parts
+
+def _construct_query(address_parts):
+    """constructs sql query from address parts,
+    returns string
+    """
+    if not type(address_parts) is dict:
+        raise TypeError(Messages.dict_req)
 
     clause_list = []
 
-    if 'AddressNumber' in address_parts:
-        value = address_parts['AddressNumber']
-        #clause = "address > {} and address < {}"
-        #clause_list.append(clause.format(int(value)-100, int(value)+100))
-        clause_list.append("address = {}".format(value))
-
-    if 'AddressNumberSuffix' in address_parts:
-        value = address_parts['AddressNumberSuffix'].upper()
-        clause_list.append("address_fr = '{}'".format(value))
-
-    if 'StreetNamePreDirectional' in address_parts:
-        value = address_parts['StreetNamePreDirectional'].upper()
-
-        if value in STREET_PRE_DIR_TRANS.keys():
-            value = STREET_PRE_DIR_TRANS[value]
-
-        clause_list.append("prefix_dir = '{}'".format(value))
-
-    if 'StreetNamePreType' in address_parts:
-        value = address_parts['StreetNamePreType'].upper()
-
-        if value == "ROUTE":
-            value = "US"
-
-        clause_list.append("prefix_typ = '{}'".format(value))
-
-    if 'StreetName' in address_parts:
-        value = address_parts['StreetName'].upper()
-        clause_list.append("street_nam = '{}'".format(value))
-
-    if 'StreetNamePostType' in address_parts:
-        value = address_parts['StreetNamePostType'].upper()
-
-        if value in POST_DIRECTIONS:
-            clause_list.append("suffix_dir = '{}'".format(value))
+    for key, value in address_parts.items():
+        if key == ATXFields.address:
+            value = int(value)
+            low = value - ADDRESS_OVER_UNDER
+            high = value + ADDRESS_OVER_UNDER
+            clause_list.append("{0} > {1} AND {0} < {2}"
+                                .format(key, low, high))
+        elif key == ATXFields.street_nam:
+            clause_list.append("{} LIKE '%{}%'".format(key, value))
         else:
-            clause_list.append("street_typ = '{}'".format(value))
+            #clause_list.append("{} = '{}'".format(key, value))
+            pass
 
-    if 'StreetNamePostDirectional' in address_parts:
-        value = address_parts['StreetNamePostDirectional'].upper()
-        clause_list.append("suffix_dir = '{}'".format(value))
+    field_list = [field for field in dir(ATXFields) if not field.startswith('_')]
+
+    query = ("SELECT OGR_GEOM_WKT, %s FROM address_point WHERE " %
+             ', '.join(field_list))
 
     if len(clause_list) <= 0:
-        raise Exception("Invalid address")
+        raise Exception(Messages.bad_results)
 
-    query = "select * from address_point where "
     query += clause_list[0]
 
-    for clause in clause_list[1:-1]:
+    for clause in clause_list[1:]:
         query += " and " + clause
 
+    # doesn't work with semicolon
+    # so don't do this: query += ";"
+
     return query
-    #return "select * from address_point where address = 100 and street_nam = 'lamar'"
 
-def score_results(result_table):
-    candidates_json = ""
-    return candidates_json
+def _query_db(query):
+    """executes sql query against data in shapefile
+    """
+    if not type(query) is str:
+        raise TypeError("string required")
 
-def query_db(query):
-    address_shp = r"shapefiles/address_point/address_point.shp"
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    data_source = driver.Open(address_shp, 0)
-    table = data_source.ExecuteSQL(query)
+    if not os.path.exists(ADDRESS_FILE_PATH):
+        raise Exception("Invalid path, shapefile does not exist")
 
-    for row in table:
-        field_index = row.GetFieldIndex('FULL_STREE')
-        print row.GetFieldAsString(field_index)
+    driver = ogr.GetDriverByName(OGR_SHP_DRIVER)
+    data_source = driver.Open(ADDRESS_FILE_PATH, 0)
 
-    return table
+    layer = data_source.ExecuteSQL(query)
 
-def locate(address_string):
-    clean_string = sanitize(address_string)
+    if not layer:
+        raise Exception(Messages.bad_query)
 
-    # handle an edge case with US before parsing
-    if "US " in clean_string:
-        clean_string.replace("US ", "ROUTE")
+    address_candidates = []
+    feature = layer.GetNextFeature()
+    while feature:
+        fields = {}
+        for field_index in range(feature.GetFieldCount()):
+            key = feature.GetFieldDefnRef(field_index).GetName()
+            value = feature.GetFieldAsString(field_index)
+            fields[key] = value
+        address_candidates.append(fields)
+        feature = layer.GetNextFeature()
+    return address_candidates
 
-    parse_result = usaddress.tag(clean_string)
-    query = construct_query(parse_result)
-    result_table = query_db(query)
-    candidates_json = score_results(result_table)
-    return candidates_json
+def _score_candidates(candidates, address_parts):
+    threshold_candidates = []
+    for candidate in candidates:
+        score = 0
+        for key, value in address_parts.items():
+            if key == ATXFields.address:
+                candidate_value = int(candidate[key])
+                preferred_value = int(address_parts[key])
 
-def main(address_string):
-    candidates_json = locate(address_string)
-    print candidates_json
+                if candidate_value > preferred_value:
+                    difference = candidate_value - preferred_value
+                else:
+                    difference = preferred_value - candidate_value
+
+                score += ((ADDRESS_OVER_UNDER - difference) * (10/float(ADDRESS_OVER_UNDER)))
+
+            elif address_parts[key] in candidate[ATXFields.full_stree]:
+                score += 10
+
+        max_score = len(address_parts)*10
+        normalized_score = int(((float(score)/float(max_score)) * 100))
+        candidate['score'] = normalized_score
+
+        if normalized_score > 75:
+            threshold_candidates.append(candidate)
+
+    return threshold_candidates
+
+def _reproject(features, epsg):
+    # this may help
+    # https://pcjericks.github.io/py-gdalogr-cookbook/projection.html
+    return features
+
+def _jsonify(address_candidates):
+    """returns json string from list of address candidates
+    """
+    #if not type(address_candidates) is list:
+    #    raise TypeError("list required")
+
+    spatialReference = {"wkid": 102739,"latestWkid": 2277}
+    candidates = []
+
+    for candidate in address_candidates:
+
+        fields = {}
+        fields['address'] = candidate['full_stree']
+
+        wkt = candidate['OGR_GEOM_WKT']
+        point = ogr.CreateGeometryFromWkt(wkt)
+        x = point.GetX()
+        y = point.GetY()
+
+        location = {}
+        location['x'] = x
+        location['y'] = y
+
+        fields['location'] = location
+        fields['score'] = candidate['score']
+
+        attributes = {}
+
+        fields['attributes'] = attributes
+
+        candidates.append(fields)
+
+    ordered_candidates = sorted(candidates, key=lambda t: t['score'], reverse=True)
+
+    fortheweb = {'spatialReference' : spatialReference,
+                 'candidates' : ordered_candidates}
+
+    return repr(fortheweb).replace("\'","\"")
+
+def locate(address_string, epsg=EPSG_2277):
+    """returns json address candidates given address string
+    """
+    if not type(address_string) is str:
+        raise TypeError(Messages.str_req)
+
+    address_parts = _parse(address_string)
+    query = _construct_query(address_parts)
+    address_candidates = _query_db(query)
+    scored_candidates = _score_candidates(address_candidates, address_parts)
+    json_result = _jsonify(scored_candidates)
+
+    #if not epsg == EPSG_2277:
+    #    results = reproject(results, epsg)
+
+    return json_result
 
 if __name__ == "__main__":
-    main(sys.argv[1])
-
-#OrderedDict([(u'ADDRESS', 14521),
-#(u'PREFIX_DIR', u''),
-#(u'PREFIX_TYP', u''),
-#(u'STREET_NAM', u'WHARTON PARK'),
-#(u'STREET_TYP', u'TRL'),
-#(u'ADDRESS_TY', 4),
-#(u'SUFFIX_DIR', u''),
-#(u'PARENT_PLA', 3032691),
-#(u'PLACE_ID', 3127555),
-#(u'SEGMENT_ID', 2036823),
-#(u'ADDRESS_FR', u'1/2'),
-#(u'ADDRESS_SU', u''),
-#(u'FULL_STREE', u'14521 1/2 WHARTON PARK TRL'),
-#(u'CREATED_BY', u'GIS-mclement'),
-#(u'CREATED_DA', datetime.date(2004, 5, 6)),
-#(u'MODIFIED_B', u'RMANOR'),
-#(u'MODIFIED_D', datetime.date(2005, 11, 30))])
+    if len(sys.argv) > 1:
+        print(locate(sys.argv[1]))
+    else:
+        print(locate("2201 Barton Springs Rd"))
