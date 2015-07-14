@@ -35,7 +35,8 @@ var map;
 function init() {
     map = new esri.Map("map");
 
-      var layer = new esri.layers.ArcGISTiledMapServiceLayer("http://localhost:8000/GIS/REST/MapTiled/GreyScale/MapServer");
+    var layer = new esri.layers.ArcGISTiledMapServiceLayer("http://localhost:8000/GIS/REST/MapTiled/GreyScale/MapServer");
+    /*var layer = new esri.layers.ArcGISTiledMapServiceLayer("http://www.austintexas.gov/GIS/REST/MapTiled/GreyScale/MapServer");*/
 
     map.addLayer(layer);
     var resizeTimer;
