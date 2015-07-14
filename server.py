@@ -46,7 +46,7 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.views.decorators.http import etag
 
-import binoculars
+import unbundle, locator
 
 class TileImageForm(forms.Form):
     lod = forms.IntegerField(min_value=0, max_value=100)
@@ -58,7 +58,7 @@ class TileImageForm(forms.Form):
         y = self.cleaned_data['y']
         x = self.cleaned_data['x']
 
-        image = binoculars.get_map_tile(lod, y, x)
+        image = unbundle.get_map_tile(lod, y, x)
         return image
 
 class TileForm(forms.Form):
