@@ -83,16 +83,6 @@ def _pre_hack(address_string):
 
     return address_string
 
-def _post_hack(address_parts):
-    """put parts in the right place, like street type in
-    post-type rather than post-direction field. hopefully
-    won't be necessary after training
-    """
-    #if not type(address_parts) is dict:
-    #    raise TypeError("dict required")
-
-    return address_parts
-
 def _translate_to_atx(address_parts):
     """takes usfields tuple and returns atx dict
     """
@@ -116,6 +106,24 @@ def _translate_to_atx(address_parts):
 
     return atx_address_parts
 
+def _post_hack(atx_address_parts):
+    """put parts in the right place, like street type in
+    post-type rather than post-direction field. hopefully
+    won't be necessary after training
+    """
+
+    print atx_address_parts
+
+    try:
+        if atx_address_parts[ATXFields.street_nam] == '1/2':
+            name = atx_address_parts[ATXFields.prefix_dir]
+            atx_address_parts[ATXFields.street_nam] = name
+            del atx_address_parts[ATXFields.prefix_dir]
+    except Exception as e:
+        logging.debug(e.message)
+
+    return atx_address_parts
+
 def _parse(address_string):
     """parses address string into atx address parts,
     returns list
@@ -126,8 +134,8 @@ def _parse(address_string):
     address_string = _sanitize(address_string)
     address_string = _pre_hack(address_string)
     address_parts = usaddress.tag(address_string)
-    address_parts = _post_hack(address_parts)
     address_parts = _translate_to_atx(address_parts)
+    address_parts = _post_hack(address_parts)
     return address_parts
 
 def _construct_query(address_parts):
